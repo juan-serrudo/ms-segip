@@ -1,11 +1,10 @@
-"""Endpoints REST para recepción y extracción de datos en documentos PDF."""
+"""Endpoints REST para recepción y extracción de datos en documentos PDF según Convenciones UOIT 1.0."""
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.api.dependencies import get_pdf_service
-from app.core.logging import get_request_id
 from app.core.security import get_auth_dependency
-from app.schemas.common import APIResponse
+from app.schemas.common import ApiResponse
 from app.schemas.pdf import PdfExtractBase64Request, PdfExtractResponseData
 from app.services.pdf_service import PdfService
 
@@ -17,13 +16,19 @@ router = APIRouter(
 
 
 @router.post(
-    "/extraer",
-    summary="Extraer Datos de PDF (Multipart)",
+    "",
+    summary="Extraer Datos de PDF (Multipart - UOIT)",
     description=(
         "Recibe un archivo PDF de certificación mediante multipart/form-data, "
         "valida su autenticidad y tamaño, y extrae los datos personales y opcionalmente la fotografía."
     ),
-    response_model=APIResponse[PdfExtractResponseData],
+    response_model=ApiResponse[PdfExtractResponseData],
+)
+@router.post(
+    "/extraer",
+    summary="Extraer Datos de PDF (Multipart - Alias)",
+    response_model=ApiResponse[PdfExtractResponseData],
+    include_in_schema=False,
 )
 async def extraer_datos_pdf(
     file: UploadFile = File(..., description="Archivo PDF de certificación SEGIP"),
@@ -32,41 +37,45 @@ async def extraer_datos_pdf(
         description="Indica si debe extraerse la fotografía embebida en formato Base64",
     ),
     pdf_service: PdfService = Depends(get_pdf_service),
-) -> APIResponse[PdfExtractResponseData]:
+) -> ApiResponse[PdfExtractResponseData]:
     """Procesa el archivo PDF subido en memoria y devuelve los campos normalizados."""
     data = await pdf_service.process_uploaded_pdf(
         file=file,
         extraer_fotografia=extraer_fotografia,
     )
-    return APIResponse(
+    return ApiResponse[PdfExtractResponseData](
         success=True,
         message="Datos extraídos del PDF exitosamente",
-        request_id=get_request_id(),
         data=data,
     )
 
 
 @router.post(
-    "/extraer-base64",
-    summary="Extraer Datos de PDF (Base64)",
+    "/base64",
+    summary="Extraer Datos de PDF (Base64 - UOIT)",
     description=(
         "Alternativa al envío multipart: recibe el documento PDF codificado en Base64 en una carga JSON, "
         "valida su contenido y extrae los datos normalizados."
     ),
-    response_model=APIResponse[PdfExtractResponseData],
+    response_model=ApiResponse[PdfExtractResponseData],
+)
+@router.post(
+    "/extraer-base64",
+    summary="Extraer Datos de PDF (Base64 - Alias)",
+    response_model=ApiResponse[PdfExtractResponseData],
+    include_in_schema=False,
 )
 async def extraer_datos_pdf_base64(
     request: PdfExtractBase64Request,
     pdf_service: PdfService = Depends(get_pdf_service),
-) -> APIResponse[PdfExtractResponseData]:
+) -> ApiResponse[PdfExtractResponseData]:
     """Procesa una cadena PDF en Base64 y extrae los datos de la certificación."""
     data = pdf_service.process_base64_pdf(
         base64_str=request.pdf_base64,
         extraer_fotografia=request.extraer_fotografia,
     )
-    return APIResponse(
+    return ApiResponse[PdfExtractResponseData](
         success=True,
         message="Datos extraídos del PDF Base64 exitosamente",
-        request_id=get_request_id(),
         data=data,
     )

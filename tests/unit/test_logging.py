@@ -1,11 +1,14 @@
-"""Pruebas unitarias para el enmascaramiento de datos y sanitización de logs."""
+"""Pruebas unitarias para el enmascaramiento de datos y sanitización de logs según Convenciones UOIT."""
 
+import json
 import logging
 
 from app.core.logging import (
+    JsonFormatter,
     SensitiveDataFilter,
     mask_document_number,
     sanitize_sensitive_data,
+    set_correlation_id,
     set_request_id,
 )
 
@@ -47,6 +50,7 @@ def test_sanitize_large_base64_strings():
 
 def test_sensitive_data_filter_record():
     set_request_id("REQ-TEST-1234")
+    set_correlation_id("CORR-TEST-5678")
     filt = SensitiveDataFilter()
 
     record = logging.LogRecord(
@@ -62,5 +66,37 @@ def test_sensitive_data_filter_record():
     result = filt.filter(record)
     assert result is True
     assert record.request_id == "REQ-TEST-1234"
+    assert record.correlation_id == "CORR-TEST-5678"
     assert "Secreta456" not in record.msg
     assert "[REDACTED]" in record.msg
+
+
+def test_json_formatter_uoit():
+    """Prueba el formato de log estructurado en JSON según UOIT Sección 18."""
+    set_request_id("REQ-JSON-1122")
+    set_correlation_id("CORR-JSON-3344")
+
+    formatter = JsonFormatter(service_name="ms-segip", environment="testing")
+    filt = SensitiveDataFilter()
+
+    record = logging.LogRecord(
+        name="test_service",
+        level=logging.INFO,
+        pathname="service.py",
+        lineno=25,
+        msg="Operación ejecutada con éxito",
+        args=(),
+        exc_info=None,
+    )
+    filt.filter(record)
+
+    output = formatter.format(record)
+    parsed = json.loads(output)
+
+    assert parsed["service"] == "ms-segip"
+    assert parsed["environment"] == "testing"
+    assert parsed["level"] == "INFO"
+    assert parsed["requestId"] == "REQ-JSON-1122"
+    assert parsed["correlationId"] == "CORR-JSON-3344"
+    assert parsed["message"] == "Operación ejecutada con éxito"
+    assert "timestamp" in parsed

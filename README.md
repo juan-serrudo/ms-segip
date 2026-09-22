@@ -198,42 +198,63 @@ Si el host Docker requiere resolución DNS interna hacia la intranet, descomenta
 
 ## Referencia de Endpoints REST
 
-Todas las respuestas del microservicio devuelven una estructura uniforme `APIResponse`:
+Todas las respuestas del microservicio devuelven la estructura uniforme institucional `ApiResponse` (UOIT Sección 13 y 23):
 ```json
 {
   "success": true,
   "message": "Operación completada exitosamente",
-  "request_id": "8d3e9112-6f29-4d6c-bb9a-9e2ad54890a1",
   "data": { ... },
-  "errors": []
+  "meta": null,
+  "error": null
 }
 ```
 
-### 1. Verificación de Salud y Preparación
+En caso de error (UOIT Sección 15):
+```json
+{
+  "success": false,
+  "message": "Mensaje funcional del error",
+  "data": null,
+  "meta": null,
+  "error": {
+    "code": "CODIGO_FUNCIONAL",
+    "details": "Detalle técnico o lista de campos",
+    "traceId": "90ba95eb-3fa5-455b-b9b0-a5483f98cda2"
+  }
+}
+```
 
-- **`GET /api/v1/health`** (Liveness Probe)
-  - Comprueba que la aplicación web responde.
+### 1. Verificación de Salud y Probes de Kubernetes (UOIT Sección 29)
 
-- **`GET /api/v1/ready`** (Readiness Probe)
-  - Evalúa separadamente el estado de la aplicación y la conectividad SOAP con SEGIP (invoca `ObtieneVersionSistema`).
-  - Retorna `HTTP 200` si SEGIP responde o `HTTP 503` con estado `degraded` si no hay conectividad.
+- **`GET /health/live`** (Liveness Probe Kubernetes)
+  - Retorna `{"status": "UP"}`.
+
+- **`GET /health/ready`** (Readiness Probe Kubernetes)
+  - Diagnostica conectividad con SEGIP. Retorna `HTTP 200` con `{"status": "UP"}` si responde, o `HTTP 503` con `{"status": "DOWN"}` si falla.
+
+- **`GET /api/v1/health`** (Liveness Informativo con `ApiResponse`)
+  - Comprueba que la aplicación web responde y retorna versión y entorno.
+
+- **`GET /api/v1/ready`** (Readiness Informativo con `ApiResponse`)
+  - Reporta separadamente el estado de la aplicación y de `segipSoap`.
 
 - **`GET /api/v1/segip/version`**
   - Retorna la versión del software de SEGIP (ej. `"8.0.0.0"`).
 
-### 2. Consulta de Datos de Persona
+### 2. Consulta de Datos de Persona (UOIT camelCase)
 
-- **`POST /api/v1/segip/personas/consultar`**
-  - Si se proporciona `fecha_expiracion`, realiza consulta documental. De lo contrario, consulta estándar.
+- **`POST /api/v1/segip/personas`** (Ruta estándar UOIT en plural)
+- **`POST /api/v1/segip/personas/consultar`** (Alias de compatibilidad)
+  - Si se proporciona `fechaExpiracion`, realiza consulta documental. De lo contrario, consulta estándar.
   - **Ejemplo de Solicitud:**
     ```json
     {
-      "numero_documento": "4892341",
+      "numeroDocumento": "4892341",
       "complemento": "1A",
       "nombre": "CARLOS",
-      "primer_apellido": "MAMANI",
-      "segundo_apellido": "QUISPE",
-      "fecha_nacimiento": "15/05/1990"
+      "primerApellido": "MAMANI",
+      "segundoApellido": "QUISPE",
+      "fechaNacimiento": "1990-05-15"
     }
     ```
   - **Ejemplo de Respuesta Normalizada:**
@@ -241,20 +262,19 @@ Todas las respuestas del microservicio devuelven una estructura uniforme `APIRes
     {
       "success": true,
       "message": "Consulta de persona realizada exitosamente",
-      "request_id": "90ba95eb-3fa5-455b-b9b0-a5483f98cda2",
       "data": {
         "persona": {
-          "numero_documento": "4892341",
+          "numeroDocumento": "4892341",
           "complemento": "1A",
           "nombres": "CARLOS ANDRES",
-          "primer_apellido": "MAMANI",
-          "segundo_apellido": "QUISPE",
-          "fecha_nacimiento": "1990-05-15",
+          "primerApellido": "MAMANI",
+          "segundoApellido": "QUISPE",
+          "fechaNacimiento": "1990-05-15",
           "sexo": "MASCULINO",
-          "estado_civil": "SOLTERO",
+          "estadoCivil": "SOLTERO",
           "domicilio": "AV. MARISCAL SANTA CRUZ #123",
-          "profesion_ocupacion": "LICENCIADO EN DERECHO",
-          "fotografia_base64": "/9j/4AAQSkZJRgABAQ..."
+          "profesionOcupacion": "LICENCIADO EN DERECHO",
+          "fotografiaBase64": "/9j/4AAQSkZJRgABAQ..."
         },
         "nacimiento": {
           "pais": "BOLIVIA",
@@ -263,13 +283,14 @@ Todas las respuestas del microservicio devuelven una estructura uniforme `APIRes
           "localidad": "NUESTRA SEÑORA DE LA PAZ"
         },
         "consulta": {
-          "codigo_unico": "UNIQ-123456789",
-          "codigo_respuesta": 1,
+          "codigoUnico": "UNIQ-123456789",
+          "codigoRespuesta": 1,
           "descripcion": "CONSULTA EXITOSA",
-          "fecha_consulta": "2026-09-22T11:45:00.000Z"
+          "fechaConsulta": "2026-09-22T11:45:00.000Z"
         }
       },
-      "errors": []
+      "meta": null,
+      "error": null
     }
     ```
 
@@ -358,6 +379,7 @@ Si SEGIP emite una nueva plantilla o versión del certificado PDF de identidad:
    Abre el nuevo PDF con PyMuPDF o inspecciona su texto:
    ```python
    import pymupdf
+
    doc = pymupdf.open("nuevo_certificado.pdf")
    print(doc[0].get_text("text"))
    ```

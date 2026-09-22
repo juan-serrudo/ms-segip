@@ -1,4 +1,4 @@
-"""Pruebas unitarias para los endpoints de integración con SEGIP."""
+"""Pruebas unitarias para los endpoints de integración con SEGIP según Convenciones UOIT 1.0."""
 
 import httpx
 import pytest
@@ -32,6 +32,7 @@ async def test_endpoint_get_version(async_client: AsyncClient, test_settings):
         body = response.json()
         assert body["success"] is True
         assert body["data"]["version"] == "8.0.0.0"
+        assert body["error"] is None
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
 
@@ -46,19 +47,26 @@ async def test_endpoint_consultar_persona_success(async_client: AsyncClient, tes
 
     try:
         payload = {
-            "numero_documento": "4892341",
+            "numeroDocumento": "4892341",
             "complemento": "1A",
             "nombre": "CARLOS",
-            "primer_apellido": "MAMANI",
+            "primerApellido": "MAMANI",
         }
-        response = await async_client.post("/api/v1/segip/personas/consultar", json=payload)
+        # Probar endpoint sustantivo UOIT
+        response = await async_client.post("/api/v1/segip/personas", json=payload)
         assert response.status_code == 200
 
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["persona"]["numero_documento"] == "4892341"
+        assert body["data"]["persona"]["numeroDocumento"] == "4892341"
         assert body["data"]["persona"]["nombres"] == "CARLOS ANDRES"
         assert body["data"]["nacimiento"]["departamento"] == "LA PAZ"
+        assert body["error"] is None
+
+        # Probar endpoint alias /personas/consultar
+        alias_resp = await async_client.post("/api/v1/segip/personas/consultar", json=payload)
+        assert alias_resp.status_code == 200
+        assert alias_resp.json()["data"]["persona"]["numeroDocumento"] == "4892341"
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
 
@@ -72,13 +80,14 @@ async def test_endpoint_consultar_persona_no_results(async_client: AsyncClient, 
     app.dependency_overrides[get_segip_client] = lambda: mock_client
 
     try:
-        payload = {"numero_documento": "9999999"}
-        response = await async_client.post("/api/v1/segip/personas/consultar", json=payload)
+        payload = {"numeroDocumento": "9999999"}
+        response = await async_client.post("/api/v1/segip/personas", json=payload)
         assert response.status_code == 404
 
         body = response.json()
         assert body["success"] is False
-        assert body["errors"][0]["code"] == "SEGIP_NO_RESULTS"
+        assert body["error"]["code"] == "SEGIP_NO_RESULTS"
+        assert body["error"]["traceId"] is not None
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
 
@@ -86,13 +95,14 @@ async def test_endpoint_consultar_persona_no_results(async_client: AsyncClient, 
 @pytest.mark.asyncio
 async def test_endpoint_consultar_persona_validation_error(async_client: AsyncClient):
     # Número de documento muy corto (mínimo 4 caracteres en schema)
-    payload = {"numero_documento": "12"}
-    response = await async_client.post("/api/v1/segip/personas/consultar", json=payload)
+    payload = {"numeroDocumento": "12"}
+    response = await async_client.post("/api/v1/segip/personas", json=payload)
     assert response.status_code == 422
 
     body = response.json()
     assert body["success"] is False
-    assert body["errors"][0]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert isinstance(body["error"]["details"], list)
 
 
 @pytest.mark.asyncio
@@ -104,14 +114,15 @@ async def test_endpoint_solicitar_certificacion(async_client: AsyncClient, test_
     app.dependency_overrides[get_segip_client] = lambda: mock_client
 
     try:
-        payload = {"numero_documento": "4892341"}
+        payload = {"numeroDocumento": "4892341"}
         response = await async_client.post("/api/v1/segip/certificaciones", json=payload)
         assert response.status_code == 200
 
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["es_valido"] is True
-        assert body["data"]["reporte_certificacion_base64"] is not None
+        assert body["data"]["esValido"] is True
+        assert body["data"]["reporteCertificacionBase64"] is not None
+        assert body["error"] is None
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
 
@@ -125,15 +136,20 @@ async def test_endpoint_verificar_qr(async_client: AsyncClient, test_settings):
     app.dependency_overrides[get_segip_client] = lambda: mock_client
 
     try:
-        payload = {"codigo_qr": "https://segip.gob.bo/validador/qr/123"}
-        response = await async_client.post(
-            "/api/v1/segip/certificaciones/verificar-qr", json=payload
-        )
+        payload = {"codigoQr": "https://segip.gob.bo/validador/qr/123"}
+        response = await async_client.post("/api/v1/segip/certificaciones/qr", json=payload)
         assert response.status_code == 200
 
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["codigo_unico"] == "QR-VERIF-112233"
+        assert body["data"]["codigoUnico"] == "QR-VERIF-112233"
+        assert body["error"] is None
+
+        # Probar alias
+        alias_resp = await async_client.post(
+            "/api/v1/segip/certificaciones/verificar-qr", json=payload
+        )
+        assert alias_resp.status_code == 200
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
 
@@ -147,12 +163,13 @@ async def test_endpoint_contrastaciones(async_client: AsyncClient, test_settings
     app.dependency_overrides[get_segip_client] = lambda: mock_client
 
     try:
-        payload = {"lista_campos": "CI=4892341", "tipo_persona": 1}
+        payload = {"listaCampos": "CI=4892341", "tipoPersona": 1}
         response = await async_client.post("/api/v1/segip/contrastaciones", json=payload)
         assert response.status_code == 200
 
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["contrastacion_json"] is not None
+        assert body["data"]["contrastacionJson"] is not None
+        assert body["error"] is None
     finally:
         app.dependency_overrides.pop(get_segip_client, None)

@@ -1,14 +1,16 @@
-"""Esquemas de solicitud y respuesta para operaciones con SEGIP."""
+"""Esquemas de solicitud y respuesta para operaciones con SEGIP según Convenciones UOIT 1.0."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from app.schemas.common import UoitBaseModel
 
 # ==============================================================================
 # Modelos Normalizados de Datos de Persona
 # ==============================================================================
 
 
-class DatosPersona(BaseModel):
-    """Información personal normalizada de la persona consultada."""
+class DatosPersona(UoitBaseModel):
+    """Información personal normalizada de la persona consultada (UOIT camelCase)."""
 
     numero_documento: str | None = Field(
         default=None, description="Número de documento de identidad"
@@ -20,7 +22,7 @@ class DatosPersona(BaseModel):
     primer_apellido: str | None = Field(default=None, description="Primer apellido")
     segundo_apellido: str | None = Field(default=None, description="Segundo apellido")
     fecha_nacimiento: str | None = Field(
-        default=None, description="Fecha de nacimiento en formato YYYY-MM-DD"
+        default=None, description="Fecha de nacimiento en formato ISO YYYY-MM-DD"
     )
     sexo: str | None = Field(default=None, description="Sexo o género registrado")
     estado_civil: str | None = Field(default=None, description="Estado civil")
@@ -31,7 +33,7 @@ class DatosPersona(BaseModel):
     )
 
 
-class DatosNacimiento(BaseModel):
+class DatosNacimiento(UoitBaseModel):
     """Información de lugar de nacimiento."""
 
     pais: str | None = Field(default=None, description="País de nacimiento")
@@ -40,7 +42,7 @@ class DatosNacimiento(BaseModel):
     localidad: str | None = Field(default=None, description="Localidad de nacimiento")
 
 
-class DatosConsultaMetadata(BaseModel):
+class DatosConsultaMetadata(UoitBaseModel):
     """Metadatos técnicos devueltos por la consulta SEGIP."""
 
     codigo_unico: str | None = Field(
@@ -53,11 +55,12 @@ class DatosConsultaMetadata(BaseModel):
         default=None, description="Descripción textual del resultado devuelta por SEGIP"
     )
     fecha_consulta: str | None = Field(
-        default=None, description="Marca de tiempo en la que se realizó la consulta"
+        default=None,
+        description="Marca de tiempo en formato ISO 8601 UTC en la que se realizó la consulta",
     )
 
 
-class PersonaNormalizada(BaseModel):
+class PersonaNormalizada(UoitBaseModel):
     """Estructura normalizada unificada para respuestas de persona."""
 
     persona: DatosPersona = Field(default_factory=DatosPersona)
@@ -70,7 +73,7 @@ class PersonaNormalizada(BaseModel):
 # ==============================================================================
 
 
-class PersonaConsultaRequest(BaseModel):
+class PersonaConsultaRequest(UoitBaseModel):
     """Parámetros para consultar datos de una persona en SEGIP."""
 
     numero_documento: str = Field(
@@ -84,7 +87,7 @@ class PersonaConsultaRequest(BaseModel):
     segundo_apellido: str | None = Field(default="", description="Segundo apellido")
     fecha_nacimiento: str | None = Field(
         default="",
-        description="Fecha de nacimiento en formato DD/MM/YYYY o YYYY-MM-DD",
+        description="Fecha de nacimiento en formato DD/MM/YYYY o ISO YYYY-MM-DD",
     )
     fecha_expiracion: str | None = Field(
         default=None,
@@ -100,7 +103,7 @@ class PersonaConsultaRequest(BaseModel):
     )
 
 
-class CertificacionConsultaRequest(BaseModel):
+class CertificacionConsultaRequest(UoitBaseModel):
     """Parámetros para solicitar el PDF de certificación de identidad a SEGIP."""
 
     numero_documento: str = Field(
@@ -119,7 +122,7 @@ class CertificacionConsultaRequest(BaseModel):
     )
 
 
-class CertificacionQrRequest(BaseModel):
+class CertificacionQrRequest(UoitBaseModel):
     """Parámetros para verificar una certificación mediante código QR."""
 
     codigo_qr: str = Field(
@@ -133,7 +136,7 @@ class CertificacionQrRequest(BaseModel):
     )
 
 
-class ContrastacionRequest(BaseModel):
+class ContrastacionRequest(UoitBaseModel):
     """Parámetros para contrastar campos de una persona contra SEGIP."""
 
     lista_campos: str = Field(
@@ -154,7 +157,7 @@ class ContrastacionRequest(BaseModel):
 # ==============================================================================
 
 
-class CertificacionResponseData(BaseModel):
+class CertificacionResponseData(UoitBaseModel):
     """Respuesta al solicitar una certificación PDF."""
 
     es_valido: bool = Field(description="Indica si la certificación es válida en SEGIP")
@@ -170,7 +173,7 @@ class CertificacionResponseData(BaseModel):
     )
 
 
-class QrVerificacionResponseData(BaseModel):
+class QrVerificacionResponseData(UoitBaseModel):
     """Respuesta a la verificación de código QR."""
 
     es_valido: bool = Field(description="Indica si el certificado QR es válido y auténtico")
@@ -184,7 +187,7 @@ class QrVerificacionResponseData(BaseModel):
     )
 
 
-class ContrastacionResponseData(BaseModel):
+class ContrastacionResponseData(UoitBaseModel):
     """Respuesta a la operación de contrastación."""
 
     es_valido: bool = Field(description="Indica si el contraste fue ejecutado")
@@ -197,7 +200,7 @@ class ContrastacionResponseData(BaseModel):
     )
 
 
-class VersionResponseData(BaseModel):
+class VersionResponseData(UoitBaseModel):
     """Respuesta de versión del sistema SEGIP."""
 
     version: str = Field(description="Versión del sistema informada por el servicio SOAP de SEGIP")

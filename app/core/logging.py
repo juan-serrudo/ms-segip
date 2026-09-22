@@ -1,13 +1,18 @@
-"""Configuración de logging estructurado y filtros de seguridad para ms-segip."""
+"""Configuración de logging estructurado y filtros de seguridad según Convenciones UOIT 1.0 (Sección 17 y 18)."""
 
 import contextvars
+import json
 import logging
 import re
 import sys
+from datetime import UTC, datetime
 from typing import Any
 
-# ContextVar para propagar el Request ID de forma asíncrona
+# ContextVars para propagar Request ID y Correlation ID de forma asíncrona (UOIT Sección 12 y 17)
 request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+correlation_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "correlation_id", default="-"
+)
 
 
 def get_request_id() -> str:
@@ -18,6 +23,16 @@ def get_request_id() -> str:
 def set_request_id(req_id: str) -> contextvars.Token[str]:
     """Establece el Request ID en el contexto actual."""
     return request_id_ctx.set(req_id)
+
+
+def get_correlation_id() -> str:
+    """Obtiene el Correlation ID del contexto actual (UOIT Sección 12.4 y 17.2)."""
+    return correlation_id_ctx.get()
+
+
+def set_correlation_id(corr_id: str) -> contextvars.Token[str]:
+    """Establece el Correlation ID en el contexto actual."""
+    return correlation_id_ctx.set(corr_id)
 
 
 def mask_document_number(doc: str | None) -> str:
@@ -86,7 +101,7 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Supresión de Base64 extensos en JSON
     (
         re.compile(
-            r'("?(?:fotografia|fotografia_base64|reporte_certificacion)"?\s*:\s*")[A-Za-z0-9+/=]{60,}(")',
+            r'("?(?:fotografia|fotografiaBase64|fotografia_base64|reporte_certificacion|reporteCertificacion)"?\s*:\s*")[A-Za-z0-9+/=]{60,}(")',
             re.IGNORECASE,
         ),
         r"\1[BASE64_SUPPRESSED]\2",
@@ -105,10 +120,11 @@ def sanitize_sensitive_data(message: str) -> str:
 
 
 class SensitiveDataFilter(logging.Filter):
-    """Filtro de logging que enmascara información sensible e inyecta el request_id."""
+    """Filtro de logging que enmascara información sensible e inyecta identificadores de trazabilidad."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = get_request_id()
+        record.correlation_id = get_correlation_id()
 
         # Sanitizar mensaje principal si es cadena
         if isinstance(record.msg, str):
@@ -128,27 +144,65 @@ class SensitiveDataFilter(logging.Filter):
 
 
 class StructuredFormatter(logging.Formatter):
-    """Formateador de logs consistente con timestamp, nivel, request_id y logger."""
+    """Formateador de texto consistente con timestamp, nivel, requestId y correlationId."""
 
     def format(self, record: logging.LogRecord) -> str:
         req_id = getattr(record, "request_id", "-")
+        corr_id = getattr(record, "correlation_id", "-")
         record.request_id = req_id if req_id else "-"
+        record.correlation_id = corr_id if corr_id else "-"
         return super().format(record)
 
 
-def setup_logging(log_level: str = "INFO") -> None:
+class JsonFormatter(logging.Formatter):
+    """Formateador de logs estructurados en JSON según UOIT Sección 18."""
+
+    def __init__(self, service_name: str = "ms-segip", environment: str = "development") -> None:
+        super().__init__()
+        self.service_name = service_name
+        self.environment = environment
+
+    def format(self, record: logging.LogRecord) -> str:
+        req_id = getattr(record, "request_id", "-")
+        corr_id = getattr(record, "correlation_id", "-")
+
+        log_data = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "service": self.service_name,
+            "environment": self.environment,
+            "requestId": req_id if req_id != "-" else None,
+            "correlationId": corr_id if corr_id != "-" else None,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(log_data, ensure_ascii=False)
+
+
+def setup_logging(
+    log_level: str = "INFO",
+    log_format: str = "text",
+    service_name: str = "ms-segip",
+    environment: str = "development",
+) -> None:
     """Inicializa la configuración de logging del microservicio."""
     level = getattr(logging, log_level.upper(), logging.INFO)
 
-    log_format = "%(asctime)s [%(levelname)s] [req_id=%(request_id)s] %(name)s: %(message)s"
-    date_format = "%Y-%m-%d %H:%M:%S"
-
-    formatter = StructuredFormatter(fmt=log_format, datefmt=date_format)
     filter_instance = SensitiveDataFilter()
-
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
     handler.addFilter(filter_instance)
+
+    if log_format.lower() == "json":
+        formatter = JsonFormatter(service_name=service_name, environment=environment)
+    else:
+        fmt = "%(asctime)s [%(levelname)s] [req_id=%(request_id)s] [corr_id=%(correlation_id)s] %(name)s: %(message)s"
+        formatter = StructuredFormatter(fmt=fmt, datefmt="%Y-%m-%d %H:%M:%S")
+
+    handler.setFormatter(formatter)
 
     # Configurar logger raíz
     root_logger = logging.getLogger()

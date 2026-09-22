@@ -1,4 +1,4 @@
-"""Pruebas unitarias de seguridad y autenticación desacoplada."""
+"""Pruebas unitarias de seguridad y trazabilidad distribuida según Convenciones UOIT."""
 
 import pytest
 from httpx import AsyncClient
@@ -33,8 +33,17 @@ async def test_verify_api_key_when_enabled_invalid():
 
 @pytest.mark.asyncio
 async def test_correlation_id_propagated_in_headers(async_client: AsyncClient):
-    custom_id = "CUSTOM-CORRELATION-ID-12345"
-    response = await async_client.get("/api/v1/health", headers={"X-Request-ID": custom_id})
+    """Prueba la propagación de X-Request-ID y X-Correlation-ID (UOIT Sección 12 y 17)."""
+    custom_req_id = "REQ-TRACE-998877"
+    custom_corr_id = "CORR-TRANS-112233"
+
+    response = await async_client.get(
+        "/api/v1/health",
+        headers={
+            "X-Request-ID": custom_req_id,
+            "X-Correlation-ID": custom_corr_id,
+        },
+    )
     assert response.status_code == 200
-    assert response.headers.get("X-Request-ID") == custom_id
-    assert response.json()["request_id"] == custom_id
+    assert response.headers.get("X-Request-ID") == custom_req_id
+    assert response.headers.get("X-Correlation-ID") == custom_corr_id

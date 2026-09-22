@@ -11,6 +11,7 @@ def test_default_settings():
     assert settings.PDF_MAX_SIZE_MB == 10.0
     assert settings.pdf_max_size_bytes == 10 * 1024 * 1024
     assert settings.SEGIP_MAX_RETRIES == 3
+    assert settings.LOG_FORMAT == "text"
     assert not settings.is_production
 
 

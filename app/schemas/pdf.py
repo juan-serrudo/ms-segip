@@ -1,12 +1,13 @@
-"""Esquemas de solicitud y respuesta para el procesamiento de documentos PDF."""
+"""Esquemas de solicitud y respuesta para el procesamiento de documentos PDF según Convenciones UOIT 1.0."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from app.schemas.common import UoitBaseModel
 from app.schemas.segip import DatosNacimiento, DatosPersona
 
 
-class DatosCertificadoPdf(BaseModel):
-    """Metadatos específicos extraídos del documento de certificación PDF."""
+class DatosCertificadoPdf(UoitBaseModel):
+    """Metadatos específicos extraídos del documento de certificación PDF (UOIT camelCase)."""
 
     numero_emision: str | None = Field(
         default=None, description="Número de emisión o certificación del PDF"
@@ -21,7 +22,7 @@ class DatosCertificadoPdf(BaseModel):
     paginas: int = Field(default=1, description="Número total de páginas analizadas")
 
 
-class PdfExtractBase64Request(BaseModel):
+class PdfExtractBase64Request(UoitBaseModel):
     """Solicitud de extracción de datos enviando el PDF codificado en Base64."""
 
     pdf_base64: str = Field(
@@ -33,7 +34,7 @@ class PdfExtractBase64Request(BaseModel):
     )
 
 
-class PdfExtractResponseData(BaseModel):
+class PdfExtractResponseData(UoitBaseModel):
     """Datos consolidados y normalizados extraídos del documento PDF de SEGIP."""
 
     persona: DatosPersona = Field(default_factory=DatosPersona)

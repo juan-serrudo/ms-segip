@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = Field(default="1.0.0", description="Versión del microservicio")
     ENVIRONMENT: str = Field(default="development", description="Entorno de despliegue")
     LOG_LEVEL: str = Field(default="INFO", description="Nivel de logs (DEBUG, INFO, WARN, ERROR)")
+    LOG_FORMAT: str = Field(
+        default="text", description="Formato de logs: 'text' o 'json' (UOIT Sección 18)"
+    )
     HOST: str = Field(default="0.0.0.0", description="Host de escucha")
     PORT: int = Field(default=8000, description="Puerto de escucha")
 
