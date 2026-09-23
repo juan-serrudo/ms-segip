@@ -1,0 +1,29 @@
+services:
+  ms-segip:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ms-segip-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=TEXT
+    # Montaje de volumen para recarga automática (Hot-Reload)
+    volumes:
+      - ./app:/app/app
+    # Sobrescritura del comando con la bandera --reload
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # Si requieres resolver el dominio segip-api.fiscalia.gob.bo mediante el DNS institucional:
+    # dns:
+    #   - 192.168.20.2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

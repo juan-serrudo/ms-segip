@@ -104,6 +104,9 @@ El servicio SOAP de SEGIP es accesible **exclusivamente desde la red intranet**:
 
 ## Instalación y Configuración Local
 
+> [!TIP]
+> Para una guía paso a paso completa con ejemplos de comandos cURL, recarga automática en Docker y solución de problemas, consulta la [Guía de Ejecución Local (GUIA_EJECUCION.md)](GUIA_EJECUCION.md).
+
 ### Requisitos Previos
 - **Python 3.12** o superior.
 - Gestor de paquetes `pip` y soporte de `venv`.
