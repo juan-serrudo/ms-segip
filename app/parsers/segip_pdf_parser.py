@@ -296,7 +296,12 @@ class SegipPdfParser:
         )
 
     def _extract_photo(self) -> str | None:
-        """Busca y extrae la imagen de fotografía de la persona en el documento."""
+        """Busca y extrae la imagen de fotografía de la persona en el documento.
+
+        Diferencia el retrato del ciudadano de logos institucionales de cabecera,
+        códigos QR y marcas de agua de fondo mediante análisis de posición en página,
+        relación de aspecto y dimensiones.
+        """
         if not self._doc:
             return None
 
@@ -314,20 +319,31 @@ class SegipPdfParser:
                     height = base_image.get("height", 0)
                     image_bytes = base_image.get("image", b"")
 
-                    # Filtrar íconos pequeños, sellos de agua o barras horizontales de encabezado
-                    # Una fotografía de carnet estándar tiene ancho >= 60, alto >= 80 y relación de aspecto vertical/retrato
-                    if width >= 60 and height >= 80 and len(image_bytes) > 50:
-                        aspect_ratio = height / width
-                        # Rango de aspecto para retratos en certificados oficiales (0.6 a 2.5)
-                        if 0.6 <= aspect_ratio <= 2.5:
-                            candidate_images.append(
-                                {
-                                    "width": width,
-                                    "height": height,
-                                    "bytes": image_bytes,
-                                    "size": len(image_bytes),
-                                }
-                            )
+                    # Descartar imágenes cuadradas (ej. códigos QR 160x160), fondos completos o íconos mínimos
+                    if width == height or width > 500 or height > 600 or width < 50 or height < 50:
+                        continue
+
+                    # Obtener coordenadas de la imagen en la página
+                    rects = page.get_image_rects(xref)
+                    y0 = rects[0].y0 if rects else 999.0
+
+                    # El logo institucional de SEGIP se sitúa en la cabecera superior (y0 < 110).
+                    # La fotografía del ciudadano se sitúa en el cuerpo de datos personales (110 <= y0 <= 360).
+                    is_body_portrait = 110.0 <= y0 <= 360.0
+                    is_header_logo = y0 < 110.0
+
+                    candidate_images.append(
+                        {
+                            "xref": xref,
+                            "width": width,
+                            "height": height,
+                            "y0": y0,
+                            "is_body_portrait": is_body_portrait,
+                            "is_header_logo": is_header_logo,
+                            "bytes": image_bytes,
+                            "size": len(image_bytes),
+                        }
+                    )
 
             if not candidate_images:
                 logger.info(
@@ -335,8 +351,12 @@ class SegipPdfParser:
                 )
                 return None
 
-            # Seleccionar la imagen más grande que encaja con una fotografía
-            candidate_images.sort(key=lambda x: x["size"], reverse=True)
+            # Priorizar candidatos ubicados en el cuerpo central (área de retrato del ciudadano)
+            # y descartar o penalizar logos institucionales de cabecera
+            candidate_images.sort(
+                key=lambda c: (c["is_body_portrait"], not c["is_header_logo"]),
+                reverse=True,
+            )
             chosen_photo = candidate_images[0]["bytes"]
 
             return base64.b64encode(chosen_photo).decode("ascii")
