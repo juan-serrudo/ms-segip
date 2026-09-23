@@ -8,12 +8,13 @@ from datetime import datetime
 def clean_string(val: str | None) -> str | None:
     """Limpia cadenas de texto, elimina espacios redundantes y retorna None si está vacía.
 
-    Convierte valores como '', 'null', 'None', 'N/A' en None.
+    Convierte valores como '', 'null', 'None', 'N/A', '--', '-' en None.
+    Remueve delimitadores angulares '<>' si están presentes en los extremos.
     """
     if val is None:
         return None
-    cleaned = str(val).strip()
-    if not cleaned or cleaned.lower() in ("null", "none", "n/a", "undefined"):
+    cleaned = str(val).strip().strip("<>").strip()
+    if not cleaned or cleaned.lower() in ("null", "none", "n/a", "undefined", "--", "-"):
         return None
     # Colapsar espacios múltiples internos
     return re.sub(r"\s+", " ", cleaned)

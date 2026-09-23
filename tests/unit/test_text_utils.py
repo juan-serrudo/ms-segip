@@ -16,6 +16,10 @@ def test_clean_string():
     assert clean_string("null") is None
     assert clean_string("NONE") is None
     assert clean_string("N/A") is None
+    assert clean_string("--") is None
+    assert clean_string("-") is None
+    assert clean_string("<CONSOLIDADO>") == "CONSOLIDADO"
+    assert clean_string("<MENCHACA>") == "MENCHACA"
     assert clean_string("  Juan   Carlos  ") == "Juan Carlos"
 
 

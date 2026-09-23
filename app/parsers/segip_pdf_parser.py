@@ -28,8 +28,16 @@ logger = logging.getLogger(__name__)
 _SEGIP_KEYWORDS = [
     "SEGIP",
     "SERVICIO GENERAL DE IDENTIFICACION PERSONAL",
+    "SISTEMA DE VERIFICACION DE IDENTIDAD CIUDADANA",
+    "REPORTE DE VALIDACION",
+    "CONVENIO INTER-INSTITUCIONAL",
     "CERTIFICACION DE DATOS",
     "CERTIFICADO DE DATOS",
+    "INFORMACION DE LA PERSONA",
+    "INFORMACION DEL CIUDADANO NACIONAL",
+    "INFORMACION DEL CIUDADANO EXTRANJERO",
+    "INFORMACION COMPLEMENTARIA",
+    "LUGAR DE NACIMIENTO",
     "DATOS DE LA PERSONA",
     "DATOS DE IDENTIDAD",
 ]
@@ -94,9 +102,10 @@ class SegipPdfParser:
         # Formatos usuales:
         # Cédula de Identidad: 1234567 LP
         # Cédula de Identidad: 1234567-1B
-        # Nro. Documento: 1234567
+        # CI:<7560566-1F>
+        # CI:  1146351
         ci_pattern = re.compile(
-            r"(?:C[eé]dula(?:\s+de\s+Identidad)?|Nro\.?\s*Documento|N[uú]mero\s*de\s*Documento|C\.?I\.?)\s*[:.]?\s*(\d{4,10})(?:[- ]([A-Za-z0-9]{1,3}))?",
+            r"(?:C[eé]dula(?:\s+de\s+Identidad)?|Nro\.?\s*Documento|N[uú]mero\s*de\s*Documento|C\.?I\.?)\s*[:.]?\s*<?\s*(\d{4,10})(?:[- ]([A-Za-z0-9]{1,3}))?>?",
             re.IGNORECASE,
         )
         ci_match = ci_pattern.search(text)
@@ -104,60 +113,78 @@ class SegipPdfParser:
         complemento = ci_match.group(2).strip() if (ci_match and ci_match.group(2)) else None
 
         # Si el complemento tiene su propia etiqueta
-        comp_match = re.search(r"Complemento\s*[:.]?\s*([A-Za-z0-9]{1,3})", text, re.IGNORECASE)
+        comp_match = re.search(r"Complemento\s*[:.]?\s*<?([A-Za-z0-9]{1,3})>?", text, re.IGNORECASE)
         if comp_match and not complemento:
             complemento = comp_match.group(1).strip()
 
-        # 2. Nombres
+        # 2. Nombres (evitar coincidir con 'Nombre de usuario' o 'Nombre de usuario final')
         nombres = self._extract_regex(
             text,
-            r"(?:Nombres?|Nombre(?:\s+Completo)?)\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Primer\s+Apellido|Apellido|Paterno|$)",
+            r"(?:Nombre\(s\)|Nombres?|Nombre(?!\s+de\s+usuario)(?:\s+Completo)?)\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)>?(?=\n\s*(?:Primer\s+Apellido|Apellido|Paterno|Fecha|$))",
         )
 
         # 3. Primer Apellido
         primer_apellido = self._extract_regex(
             text,
-            r"(?:Primer\s+Apellido|Apellido\s+Paterno|Paterno)\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Segundo\s+Apellido|Materno|$)",
+            r"(?:Primer\s+Apellido|Apellido\s+Paterno|Paterno)\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)>?(?=\n\s*(?:Segundo\s+Apellido|Materno|Fecha|$))",
         )
 
         # 4. Segundo Apellido
         segundo_apellido = self._extract_regex(
             text,
-            r"(?:Segundo\s+Apellido|Apellido\s+Materno|Materno)\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Apellido\s+de\s+Casada|Fecha|Sexo|$)",
+            r"(?:Segundo\s+Apellido|Apellido\s+Materno|Materno)\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s-]+?)>?(?=\n\s*(?:Apellido|Nombre|Fecha|Sexo|Procedencia|$))",
         )
 
-        # 5. Fecha de Nacimiento
+        # 5. Fecha de Nacimiento (tolera saltos de línea intermedios como 'Fecha de\nnacimiento:')
         raw_fecha_nac = self._extract_regex(
             text,
-            r"(?:Fecha(?:\s+de)?\s+Nacimiento|Fec\.?\s*Nac\.?)\s*[:.]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}|[0-9]{4}[/-][0-9]{2}[/-][0-9]{2})",
+            r"Fecha\s+(?:de\s+)?nacimiento\s*[:.]?\s*\n*\s*<?([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}|[0-9]{4}[/-][0-9]{2}[/-][0-9]{2})>?",
         )
         fecha_nacimiento = normalize_date(raw_fecha_nac) if raw_fecha_nac else None
 
-        # 6. Sexo / Género
-        raw_sexo = self._extract_regex(
-            text,
-            r"(?:Sexo|G[eé]nero)\s*[:.]?\s*([A-Za-z]+)",
-        )
-        sexo = normalize_gender(raw_sexo)
-
-        # 7. Estado Civil
+        # 6. Estado Civil
         raw_estado = self._extract_regex(
             text,
-            r"Estado\s+Civil\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Profesi[oó]n|Domicilio|$)",
+            r"Estado\s+Civil\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)>?(?=\n|Profesi[oó]n|Domicilio|$)",
         )
         estado_civil = normalize_marital_status(raw_estado)
+
+        # 7. Sexo / Género (explícito o inferido por desinencia gramatical de estado civil)
+        raw_sexo = self._extract_regex(
+            text,
+            r"(?:Sexo|G[eé]nero)\s*[:.]?\s*<?([A-Za-z]+)>?",
+        )
+        sexo = normalize_gender(raw_sexo)
+        if not sexo and estado_civil:
+            norm_est = remove_accents(estado_civil).upper()
+            if norm_est.endswith("A"):
+                sexo = "FEMENINO"
+            elif norm_est.endswith("O"):
+                sexo = "MASCULINO"
 
         # 8. Profesión u Ocupación
         profesion = self._extract_regex(
             text,
-            r"(?:Profesi[oó]n(?:\s*[/y]\s*Ocupaci[oó]n)?|Ocupaci[oó]n)\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s\d,.-]+?)(?=\n|Domicilio|Direcci[oó]n|$)",
+            r"(?:Profesi[oó]n(?:\s*[/yu]\s*Ocupaci[oó]n)?|Ocupaci[oó]n)\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s\d,.-]+?)>?(?=\n|Domicilio|Direcci[oó]n|Pa[ií]s|Estado|$)",
         )
 
-        # 9. Domicilio
-        domicilio = self._extract_regex(
-            text,
-            r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*([^\n\r]+)",
-        )
+        # 9. Domicilio (soporta delimitadores angulares y domicilios en varias líneas)
+        dom_bracket = re.search(r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*<([^>]+)>", text, re.IGNORECASE)
+        if dom_bracket:
+            domicilio = dom_bracket.group(1).strip()
+        else:
+            dom_match = re.search(
+                r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*\n*\s*([\s\S]+?)(?=\n\s*(?:Profesi[oó]n|Ocupaci[oó]n|Pa[ií]s|Lugar|Estado|$))",
+                text,
+                re.IGNORECASE,
+            )
+            if dom_match:
+                domicilio = " ".join(dom_match.group(1).split())
+            else:
+                domicilio = self._extract_regex(
+                    text,
+                    r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*([^\n\r]+)",
+                )
 
         return DatosPersona(
             numero_documento=clean_string(numero_documento),
@@ -180,19 +207,19 @@ class SegipPdfParser:
         # o País: BOLIVIA, Departamento: LA PAZ...
         pais = self._extract_regex(
             text,
-            r"Pa[ií]s(?:\s+de\s+Nacimiento)?\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Depto|Departamento|Provincia|Localidad|$)",
+            r"Pa[ií]s(?:\s+de\s+Nacimiento)?\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)>?(?=\n|Depto|Departamento|Provincia|Localidad|$)",
         )
         departamento = self._extract_regex(
             text,
-            r"(?:Departamento|Depto\.?)(?:\s+de\s+Nacimiento)?\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Provincia|Localidad|$)",
+            r"(?:Departamento|Depto\.?)(?:\s+de\s+Nacimiento)?\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s-]+?)>?(?=\n|Provincia|Localidad|$)",
         )
         provincia = self._extract_regex(
             text,
-            r"Provincia(?:\s+de\s+Nacimiento)?\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Localidad|Secci[oó]n|$)",
+            r"Provincia(?:\s+de\s+Nacimiento)?\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s-]+?)>?(?=\n|Localidad|Secci[oó]n|$)",
         )
         localidad = self._extract_regex(
             text,
-            r"Localidad(?:\s+de\s+Nacimiento)?\s*[:.]?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ\s]+?)(?=\n|Fecha|Estado|$)",
+            r"Localidad(?:\s+de\s+Nacimiento)?\s*[:.]?\s*<?([A-Za-zÁÉÍÓÚáéíóúÑñ\s-]+?)>?(?=\n|Fecha|Estado|$)",
         )
 
         # Alternativa de línea compuesta "Lugar de Nacimiento: BOLIVIA, LA PAZ, MURILLO, LA PAZ"
@@ -228,14 +255,37 @@ class SegipPdfParser:
             text,
             r"(?:C[oó]digo\s+(?:SEGIP|de\s+Control|Verificaci[oó]n|Único))\s*[:.]?\s*([A-Za-z0-9\-]+)",
         )
+        # Si no hay código por etiqueta, buscar el identificador QR de seguimiento alfanumérico con guión (ej. c4CAXTej-4774047)
+        if not codigo_segip:
+            qr_match = re.search(r"\b([A-Za-z0-9]{5,15}-[0-9]{4,12})\b", text)
+            if qr_match:
+                codigo_segip = qr_match.group(1).strip()
+                if not nro_emision:
+                    nro_emision = codigo_segip
+
         fecha_emision = self._extract_regex(
             text,
-            r"(?:Fecha(?:\s+y\s+Hora)?\s+de\s+Emisi[oó]n|Emitido\s+el)\s*[:.]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}(?:\s+[0-9]{2}:[0-9]{2}:[0-9]{2})?)",
+            r"(?:Fecha(?:\s+y\s+Hora)?\s+de\s+(?:Emisi[oó]n|Impresi[oó]n)|Emitido\s+el)\s*[:.]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}(?:\s+[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\s*[APap][Mm])?)?)",
         )
         motivo = self._extract_regex(
             text,
             r"(?:Motivo(?:\s+de\s+la\s+Consulta)?|Solicitante)\s*[:.]?\s*([^\n\r]+)",
         )
+        if not motivo:
+            inst_match = re.search(
+                r"(?:^|\n)\s*Instituci[oó]n\s*[:.]?\s*([^\n\r]+)", text, re.IGNORECASE
+            )
+            institucion = inst_match.group(1).strip() if inst_match else None
+            sist_match = re.search(
+                r"^\s*Sistema\s*:\s*([^\n\r]+)", text, re.IGNORECASE | re.MULTILINE
+            )
+            sistema = sist_match.group(1).strip() if sist_match else None
+            if institucion and sistema:
+                motivo = f"{sistema} - {institucion}"
+            elif institucion:
+                motivo = institucion
+            elif sistema:
+                motivo = sistema
 
         return DatosCertificadoPdf(
             numero_emision=clean_string(nro_emision),
@@ -265,11 +315,11 @@ class SegipPdfParser:
                     image_bytes = base_image.get("image", b"")
 
                     # Filtrar íconos pequeños, sellos de agua o barras horizontales de encabezado
-                    # Una fotografía de carnet estándar tiene ancho >= 60, alto >= 80 y relación de aspecto vertical
+                    # Una fotografía de carnet estándar tiene ancho >= 60, alto >= 80 y relación de aspecto vertical/retrato
                     if width >= 60 and height >= 80 and len(image_bytes) > 50:
                         aspect_ratio = height / width
-                        # Rango de aspecto típico para retratos 3x4 o similares (0.9 a 2.0)
-                        if 0.8 <= aspect_ratio <= 2.2:
+                        # Rango de aspecto para retratos en certificados oficiales (0.6 a 2.5)
+                        if 0.6 <= aspect_ratio <= 2.5:
                             candidate_images.append(
                                 {
                                     "width": width,
