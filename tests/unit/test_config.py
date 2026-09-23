@@ -13,6 +13,16 @@ def test_default_settings():
     assert settings.SEGIP_MAX_RETRIES == 3
     assert settings.LOG_FORMAT == "text"
     assert not settings.is_production
+    assert settings.SEGIP_FALLBACK_TO_CERTIFICACION is True
+
+
+def test_segip_operator_and_fallback_settings():
+    settings = Settings(
+        SEGIP_USUARIO_FINAL="P33638371",
+        SEGIP_FALLBACK_TO_CERTIFICACION=False,
+    )
+    assert settings.SEGIP_USUARIO_FINAL == "P33638371"
+    assert settings.SEGIP_FALLBACK_TO_CERTIFICACION is False
 
 
 def test_cors_origins_parsing():

@@ -82,6 +82,14 @@ class Settings(BaseSettings):
         default=3,
         description="Cantidad máxima de reintentos para fallos transitorios de red",
     )
+    SEGIP_USUARIO_FINAL: str = Field(
+        default="",
+        description="Clave o código de acceso de usuario final/operador por defecto (pClaveAccesoUsuarioFinal)",
+    )
+    SEGIP_FALLBACK_TO_CERTIFICACION: bool = Field(
+        default=True,
+        description="Recurrir automáticamente a ConsultaDatoPersonaCertificacion si la consulta JSON no está asignada",
+    )
 
     # Parámetros para procesamiento de PDFs
     PDF_MAX_SIZE_MB: float = Field(

@@ -173,3 +173,66 @@ async def test_endpoint_contrastaciones(async_client: AsyncClient, test_settings
         assert body["error"] is None
     finally:
         app.dependency_overrides.pop(get_segip_client, None)
+
+
+@pytest.mark.asyncio
+async def test_endpoint_consultar_persona_fallback_certificacion(
+    async_client: AsyncClient, test_settings
+):
+    import base64
+
+    from tests.fixtures.mock_pdfs import create_mock_segip_pdf
+
+    valid_pdf_b64 = base64.b64encode(create_mock_segip_pdf()).decode("ascii")
+
+    mock_unassigned_xml = """<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <ConsultaDatoPersonaEnJsonResponse xmlns="http://tempuri.org/">
+            <ConsultaDatoPersonaEnJsonResult>
+                <CodigoRespuesta>2</CodigoRespuesta>
+                <EsValido>false</EsValido>
+                <Mensaje>El resurso no está definido y/o no está asignado al usuario</Mensaje>
+            </ConsultaDatoPersonaEnJsonResult>
+        </ConsultaDatoPersonaEnJsonResponse>
+    </s:Body>
+</s:Envelope>"""
+
+    mock_cert_xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+    <s:Body>
+        <ConsultaDatoPersonaCertificacionResponse xmlns="http://tempuri.org/">
+            <ConsultaDatoPersonaCertificacionResult>
+                <CodigoRespuesta>1</CodigoRespuesta>
+                <CodigoUnico>CERT-FALLBACK-123</CodigoUnico>
+                <EsValido>true</EsValido>
+                <Mensaje>CERTIFICACION EMITIDA CON EXITO</Mensaje>
+                <ReporteCertificacion>{valid_pdf_b64}</ReporteCertificacion>
+            </ConsultaDatoPersonaCertificacionResult>
+        </ConsultaDatoPersonaCertificacionResponse>
+    </s:Body>
+</s:Envelope>"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if b"ConsultaDatoPersonaEnJson" in request.content:
+            return httpx.Response(200, content=mock_unassigned_xml.encode("utf-8"))
+        if b"ConsultaDatoPersonaCertificacion" in request.content:
+            return httpx.Response(200, content=mock_cert_xml.encode("utf-8"))
+        return httpx.Response(500)
+
+    mock_client = SegipSoapClient(settings=test_settings, transport=httpx.MockTransport(handler))
+    app.dependency_overrides[get_segip_client] = lambda: mock_client
+
+    try:
+        payload = {"numeroDocumento": "6842190"}
+        response = await async_client.post("/api/v1/segip/personas", json=payload)
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["success"] is True
+        assert body["data"]["persona"]["numeroDocumento"] == "6842190"
+        assert body["data"]["persona"]["nombres"] == "ROBERTO CARLOS"
+        assert body["data"]["nacimiento"]["departamento"] == "COCHABAMBA"
+        assert body["data"]["consulta"]["codigoUnico"] == "CERT-FALLBACK-123"
+    finally:
+        app.dependency_overrides.pop(get_segip_client, None)

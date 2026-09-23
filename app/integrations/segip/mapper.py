@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.exceptions import SegipInvalidJsonException
+from app.schemas.pdf import PdfExtractResponseData
 from app.schemas.segip import (
     CertificacionResponseData,
     ContrastacionResponseData,
@@ -133,6 +134,31 @@ class SegipResponseMapper:
         )
 
         return PersonaNormalizada(persona=persona, nacimiento=nacimiento, consulta=metadata)
+
+    @staticmethod
+    def map_pdf_extract_to_persona_normalizada(
+        parsed_pdf: PdfExtractResponseData,
+        raw_cert: dict[str, Any],
+    ) -> PersonaNormalizada:
+        """Mapea los datos extraídos de una certificación PDF de SEGIP a un esquema PersonaNormalizada."""
+        raw_code = raw_cert.get("CodigoRespuesta")
+        try:
+            codigo_respuesta = int(raw_code) if raw_code is not None else 1
+        except (ValueError, TypeError):
+            codigo_respuesta = 1
+
+        metadata = DatosConsultaMetadata(
+            codigo_unico=clean_string(raw_cert.get("CodigoUnico")),
+            codigo_respuesta=codigo_respuesta,
+            descripcion="Datos extraídos exitosamente desde Certificación PDF SEGIP",
+            fecha_consulta=datetime.now(UTC).isoformat(),
+        )
+
+        return PersonaNormalizada(
+            persona=parsed_pdf.persona,
+            nacimiento=parsed_pdf.nacimiento,
+            consulta=metadata,
+        )
 
     @staticmethod
     def map_to_certificacion(raw_result: dict[str, Any]) -> CertificacionResponseData:

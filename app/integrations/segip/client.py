@@ -10,7 +10,7 @@ import defusedxml.ElementTree as defused_ET
 import httpx
 
 from app.core.config import Settings
-from app.core.logging import mask_document_number
+from app.core.logging import mask_document_number, sanitize_sensitive_data
 from app.integrations.segip.exceptions import (
     SegipAuthError,
     SegipCommunicationError,
@@ -281,6 +281,13 @@ class SegipSoapClient:
             "SOAPAction": f'"{soap_action}"',
         }
 
+        logger.debug(
+            "Enviando sobre SOAP 1.1 [%s] a %s:\n%s",
+            operation_name,
+            self.service_url,
+            sanitize_sensitive_data(envelope),
+        )
+
         retries = 0
         last_exception: Exception | None = None
 
@@ -290,6 +297,13 @@ class SegipSoapClient:
                     url=self.service_url,
                     content=envelope.encode("utf-8"),
                     headers=headers,
+                )
+
+                logger.debug(
+                    "Respuesta SOAP recibida [%s] HTTP %d:\n%s",
+                    operation_name,
+                    response.status_code,
+                    sanitize_sensitive_data(response.text),
                 )
 
                 # Si es un error 500 con cuerpo SOAP Fault, procesar la falla

@@ -98,3 +98,34 @@ def test_map_to_contrastacion():
     contrast = SegipResponseMapper.map_to_contrastacion(raw_soap_result)
     assert contrast.es_valido is True
     assert contrast.contrastacion_json == '{"CI": true}'
+
+
+def test_map_pdf_extract_to_persona_normalizada():
+    from app.schemas.pdf import DatosCertificadoPdf, PdfExtractResponseData
+    from app.schemas.segip import DatosNacimiento, DatosPersona
+
+    parsed_pdf = PdfExtractResponseData(
+        persona=DatosPersona(
+            numero_documento="5544332",
+            nombres="JUAN CARLOS",
+            primer_apellido="PEREZ",
+        ),
+        nacimiento=DatosNacimiento(
+            departamento="CHUQUISACA",
+            pais="BOLIVIA",
+        ),
+        certificado=DatosCertificadoPdf(
+            numero_emision="CERT-001",
+        ),
+    )
+    raw_cert = {
+        "CodigoUnico": "CERT-SOAP-123",
+        "CodigoRespuesta": 1,
+    }
+
+    persona_norm = SegipResponseMapper.map_pdf_extract_to_persona_normalizada(parsed_pdf, raw_cert)
+    assert persona_norm.persona.numero_documento == "5544332"
+    assert persona_norm.persona.nombres == "JUAN CARLOS"
+    assert persona_norm.nacimiento.departamento == "CHUQUISACA"
+    assert persona_norm.consulta.codigo_unico == "CERT-SOAP-123"
+    assert persona_norm.consulta.codigo_respuesta == 1
