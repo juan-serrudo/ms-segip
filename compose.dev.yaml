@@ -1,3 +1,6 @@
+include:
+  - path: docker/compose.infra.yaml
+
 services:
   ms-segip:
     build:
@@ -27,3 +30,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - segip-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+

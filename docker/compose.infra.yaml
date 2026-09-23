@@ -1,0 +1,83 @@
+# ==============================================================================
+# ms-segip: Infraestructura de Almacenamiento Local (Desarrollo)
+# ==============================================================================
+# Servicios:
+#   - postgres: Base de datos relacional (PostgreSQL 16)
+#   - rustfs: Almacenamiento de objetos de alto rendimiento compatible con S3 (RustFS)
+#
+# Para iniciar únicamente esta infraestructura:
+#   docker compose -f docker/compose.infra.yaml up -d
+#
+# Para detenerla:
+#   docker compose -f docker/compose.infra.yaml down
+# ==============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ms-segip-postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    env_file:
+      - path: ../.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_DB: ${DB_NAME:-segip_db}
+      POSTGRES_USER: ${DB_USER:-segip_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-segip_secret_2026}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - segip-net
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: ms-segip-rustfs
+    restart: unless-stopped
+    ports:
+      - "${RUSTFS_PORT:-9000}:9000"         # API S3
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001" # Consola Web Administrativa
+    env_file:
+      - path: ../.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfssecret2026}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - segip-net
+
+volumes:
+  postgres_data:
+    name: ms_segip_postgres_data
+  rustfs_data:
+    name: ms_segip_rustfs_data
+
+networks:
+  segip-net:
+    name: segip-net
+    driver: bridge
