@@ -113,6 +113,53 @@ class Settings(BaseSettings):
         description="Habilita pruebas de integración directas contra la intranet de SEGIP",
     )
 
+    # Configuración de Base de Datos PostgreSQL
+    DB_HOST: str = Field(default="localhost", description="Host de PostgreSQL")
+    DB_PORT: int = Field(default=5432, description="Puerto de PostgreSQL")
+    DB_USER: str = Field(default="segip_user", description="Usuario de PostgreSQL")
+    DB_PASSWORD: str = Field(default="segip_secret_2026", description="Contraseña de PostgreSQL")
+    DB_NAME: str = Field(default="segip_db", description="Nombre de la base de datos")
+    DATABASE_URL: str | None = Field(
+        default=None,
+        description="URL de conexión SQLAlchemy. Si se provee, tiene prioridad sobre los parámetros DB_*",
+    )
+    DB_POOL_SIZE: int = Field(default=5, description="Tamaño base del pool de conexiones")
+    DB_MAX_OVERFLOW: int = Field(default=5, description="Conexiones adicionales máximas en ráfaga")
+    DB_POOL_TIMEOUT: float = Field(default=30.0, description="Timeout en segundos para obtener conexión")
+    DB_POOL_RECYCLE: int = Field(default=1800, description="Tiempo de reciclado de conexiones en segundos")
+    DB_POOL_PRE_PING: bool = Field(
+        default=True, description="Verifica la conexión antes de entregarla del pool (vital en K8s)"
+    )
+    DB_ECHO: bool = Field(default=False, description="Activa log detallado de SQL emitido por SQLAlchemy")
+
+    # Almacenamiento de Objetos (RustFS / S3)
+    RUSTFS_ENDPOINT_URL: str = Field(
+        default="http://localhost:9000", description="URL endpoint de RustFS/S3"
+    )
+    RUSTFS_PORT: int = Field(default=9000, description="Puerto API S3 de RustFS")
+    RUSTFS_CONSOLE_PORT: int = Field(default=9001, description="Puerto Consola Web de RustFS")
+    RUSTFS_ACCESS_KEY: str = Field(default="rustfsadmin", description="Access Key para RustFS/S3")
+    RUSTFS_SECRET_KEY: str = Field(default="rustfssecret2026", description="Secret Key para RustFS/S3")
+    RUSTFS_BUCKET_NAME: str = Field(
+        default="segip-archivos", description="Nombre del bucket en RustFS"
+    )
+    RUSTFS_REGION: str = Field(default="us-east-1", description="Región S3")
+    RUSTFS_USE_SSL: bool = Field(default=False, description="Indica si debe usarse HTTPS para RustFS")
+
+    @property
+    def async_database_url(self) -> str:
+        """Retorna la URL de conexión compatible con SQLAlchemy asyncpg."""
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            if url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        return (
+            f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        )
+
+
     @property
     def pdf_max_size_bytes(self) -> int:
         """Retorna el tamaño máximo de PDF en bytes."""

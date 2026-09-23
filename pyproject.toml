@@ -20,6 +20,8 @@ dependencies = [
     "defusedxml>=0.7.1",
     "pymupdf>=1.24.0",
     "python-multipart>=0.0.12",
+    "sqlalchemy>=2.0.35",
+    "asyncpg>=0.29.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +31,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "respx>=0.22.0",
     "ruff>=0.7.0",
+    "aiosqlite>=0.20.0",
 ]
 
 [tool.hatch.build.targets.wheel]

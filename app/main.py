@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.dependencies import get_segip_service
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
+from app.core.database import close_database_engine
 from app.core.exceptions import AppException
 from app.core.logging import (
     get_correlation_id,
@@ -49,6 +50,7 @@ class TraceabilityMiddleware(BaseHTTPMiddleware):
 
 
 @asynccontextmanager
+
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de la aplicación: configuración de logs estructurados y recursos."""
     setup_logging(
@@ -66,6 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     yield
     logger.info("Deteniendo %s...", settings.APP_NAME)
+    await close_database_engine()
+
 
 
 app = FastAPI(

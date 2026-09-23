@@ -3,9 +3,12 @@
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.database import get_session_factory
 from app.integrations.segip.client import SegipSoapClient
+from app.repositories.persona_repository import PersonaRepository
 from app.services.pdf_service import PdfService
 from app.services.segip_service import SegipService
 
@@ -34,3 +37,25 @@ def get_pdf_service(
 ) -> PdfService:
     """Provee una instancia del servicio de procesamiento de documentos PDF."""
     return PdfService(settings=settings)
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Provee una sesión asíncrona de base de datos con manejo transaccional automático (commit/rollback)."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+def get_persona_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> PersonaRepository:
+    """Provee una instancia de PersonaRepository ligada a la sesión activa."""
+    return PersonaRepository(session=session)
+
