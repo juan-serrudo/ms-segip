@@ -39,6 +39,8 @@ async def in_memory_session() -> AsyncSession:
     async with session_factory() as session:
         yield session
 
+    await engine.dispose()
+
 
 @pytest.fixture
 def mock_storage_service():
@@ -292,6 +294,64 @@ async def test_forzar_actualizacion_falla_soap_aplica_degradacion_gracil(
     resp = await service.consultar_o_certificar_persona(req)
 
     # No debe lanzar excepción sino degradación grácil
+    assert resp.metadatos.origen_datos == "CACHE_BD_DEGRADADO"
+    assert resp.metadatos.es_refrescado is False
+    assert resp.metadatos.aviso is not None
+    assert "No fue posible refrescar los datos desde SEGIP" in resp.metadatos.aviso
+
+
+@pytest.mark.asyncio
+async def test_forzar_actualizacion_cuota_agotada_aplica_degradacion_gracil(
+    in_memory_session: AsyncSession,
+    mock_storage_service,
+    mock_segip_service,
+):
+    """Verifica que ante cuota diaria superada en forzar_actualizacion, devuelve los datos de BD con aviso."""
+    persona = PersonaModel(
+        numero_documento="6842190",
+        complemento="1B",
+        nombres="ROBERTO CARLOS",
+        primer_apellido="FLORES",
+        segundo_apellido="CONDORI",
+        estado_civil="CASADO",
+        fotografia_path="fotografias/6842190_1B/foto_original.jpg",
+    )
+    in_memory_session.add(persona)
+    await in_memory_session.flush()
+
+    cert = CertificacionModel(
+        persona_id=persona.id,
+        numero_emision="CERT-2026-0001",
+        pdf_path="certificados/6842190_1B/cert_original.pdf",
+    )
+    in_memory_session.add(cert)
+    await in_memory_session.commit()
+
+    repo = PersonaRepository(session=in_memory_session)
+    service = PersonaCertificadaService(
+        persona_repo=repo,
+        segip_service=mock_segip_service,
+        storage_service=mock_storage_service,
+    )
+
+    # Simular cuota diaria excedida retornada en mensaje SOAP
+    mock_segip_service.solicitar_certificacion = AsyncMock(
+        return_value=CertificacionResponseData(
+            es_valido=False,
+            mensaje="Ha sobrepasado el límite de cuota diaria autorizada de consultas",
+            codigo_respuesta=99,
+            reporte_certificacion_base64=None,
+        )
+    )
+
+    req = PersonaCertificadaRequest(
+        numero_documento="6842190",
+        complemento="1B",
+        forzar_actualizacion=True,
+    )
+
+    resp = await service.consultar_o_certificar_persona(req)
+
     assert resp.metadatos.origen_datos == "CACHE_BD_DEGRADADO"
     assert resp.metadatos.es_refrescado is False
     assert resp.metadatos.aviso is not None

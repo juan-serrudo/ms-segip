@@ -109,35 +109,15 @@ class PersonaCertificadaService:
             SegipUnavailableException,
             SegipTimeoutException,
             SegipAuthException,
+            SegipQuotaExceededException,
             Exception,
         ) as err:
             logger.warning("Fallo al consultar SOAP de SEGIP: %s", err)
-            # Estrategia Opción A: Degradación Grácil ante fallo en refresco forzado
-            if req.forzar_actualizacion:
-                try:
-                    persona_existente = await self.persona_repo.buscar_con_desambiguacion(
-                        numero_documento=doc,
-                        complemento=comp,
-                        fecha_nacimiento=fecha_nac,
-                    )
-                    if persona_existente is not None:
-                        logger.warning(
-                            "Aplicando degradación grácil: Falló SEGIP (%s), devolviendo datos históricos de BD",
-                            err,
-                        )
-                        aviso_fallback = (
-                            "No fue posible refrescar los datos desde SEGIP (servicio no disponible o cuota agotada). "
-                            "Se retornan los últimos datos históricos certificados registrados en el sistema."
-                        )
-                        return await self._construir_respuesta_desde_db(
-                            persona=persona_existente,
-                            req=req,
-                            origen="CACHE_BD_DEGRADADO",
-                            aviso=aviso_fallback,
-                        )
-                except PersonaDuplicadaException:
-                    pass
-            # Si no era refresco forzado o la persona no existe previamente, propagar el error
+            fallback = await self._intentar_degradacion_gracil(
+                doc=doc, comp=comp, fecha_nac=fecha_nac, req=req, motivo=str(err)
+            )
+            if fallback:
+                return fallback
             raise
 
         # ==============================================================================
@@ -158,6 +138,11 @@ class PersonaCertificadaService:
             )
 
         if "cuota" in msg_lower or "limite" in msg_lower:
+            fallback = await self._intentar_degradacion_gracil(
+                doc=doc, comp=comp, fecha_nac=fecha_nac, req=req, motivo=f"Cuota agotada: {msg}"
+            )
+            if fallback:
+                return fallback
             raise SegipQuotaExceededException(
                 message=f"Se ha superado la cuota diaria de consultas asignada por SEGIP: {msg}",
                 details={"mensaje": msg, "codigo": cert_data.codigo_respuesta},
@@ -245,24 +230,13 @@ class PersonaCertificadaService:
         # ==============================================================================
         # 7. Generación de URLs Prefirmadas en RustFS
         # ==============================================================================
-        expiracion = req.tiempo_expiracion_url_segundos
-        url_pdf = None
-        if req.generar_url_pdf and pdf_path:
-            url_pdf = self.storage_service.generar_url_prefirmada(pdf_path, expiracion)
-
-        url_foto = None
-        if req.generar_url_imagen and foto_path:
-            url_foto = self.storage_service.generar_url_prefirmada(foto_path, expiracion)
+        archivos = self._generar_archivos_certificacion(
+            pdf_path=pdf_path,
+            foto_path=foto_path,
+            req=req,
+        )
 
         total_certs = await self.persona_repo.contar_certificaciones(persona_guardada.id)
-        fecha_exp_dt = datetime.now(UTC) + timedelta(seconds=expiracion)
-
-        archivos = ArchivosCertificacion(
-            url_presignada_pdf=url_pdf,
-            url_presignada_imagen=url_foto,
-            vigencia_segundos=expiracion,
-            fecha_expiracion=fecha_exp_dt,
-        )
 
         metadatos = MetadatosConsultaPersona(
             origen_datos="SEGIP_SOAP",
@@ -283,50 +257,70 @@ class PersonaCertificadaService:
             metadatos=metadatos,
         )
 
-    async def _construir_respuesta_desde_db(
+    async def _intentar_degradacion_gracil(
         self,
-        persona: PersonaModel,
+        doc: str,
+        comp: str,
+        fecha_nac: str,
         req: PersonaCertificadaRequest,
-        origen: str,
-        aviso: str | None,
-    ) -> PersonaCertificadaResponseData:
-        """Construye la respuesta consolidada a partir de los registros en PostgreSQL."""
-        ultima_cert: CertificacionModel | None = await self.persona_repo.get_ultima_certificacion(
-            persona.id
-        )
-        total_certs = await self.persona_repo.contar_certificaciones(persona.id)
+        motivo: str,
+    ) -> PersonaCertificadaResponseData | None:
+        """Intenta retornar datos históricos de BD cuando falla la actualización forzada."""
+        if not req.forzar_actualizacion:
+            return None
+        try:
+            persona_existente = await self.persona_repo.buscar_con_desambiguacion(
+                numero_documento=doc,
+                complemento=comp,
+                fecha_nacimiento=fecha_nac,
+            )
+            if persona_existente is not None:
+                logger.warning(
+                    "Aplicando degradación grácil: Falló SEGIP (%s), devolviendo datos históricos de BD",
+                    motivo,
+                )
+                aviso_fallback = (
+                    "No fue posible refrescar los datos desde SEGIP (servicio no disponible o cuota agotada). "
+                    "Se retornan los últimos datos históricos certificados registrados en el sistema."
+                )
+                return await self._construir_respuesta_desde_db(
+                    persona=persona_existente,
+                    req=req,
+                    origen="CACHE_BD_DEGRADADO",
+                    aviso=aviso_fallback,
+                )
+        except PersonaDuplicadaException:
+            pass
+        return None
 
+    def _generar_archivos_certificacion(
+        self,
+        pdf_path: str | None,
+        foto_path: str | None,
+        req: PersonaCertificadaRequest,
+    ) -> ArchivosCertificacion:
+        """Genera las URLs prefirmadas en RustFS con su respectiva vigencia."""
         expiracion = req.tiempo_expiracion_url_segundos
         url_pdf = None
-        if req.generar_url_pdf and ultima_cert and ultima_cert.pdf_path:
-            url_pdf = self.storage_service.generar_url_prefirmada(ultima_cert.pdf_path, expiracion)
+        if req.generar_url_pdf and pdf_path:
+            url_pdf = self.storage_service.generar_url_prefirmada(pdf_path, expiracion)
 
         url_foto = None
-        if req.generar_url_imagen and persona.fotografia_path:
-            url_foto = self.storage_service.generar_url_prefirmada(
-                persona.fotografia_path, expiracion
-            )
+        if req.generar_url_imagen and foto_path:
+            url_foto = self.storage_service.generar_url_prefirmada(foto_path, expiracion)
 
         fecha_exp_dt = datetime.now(UTC) + timedelta(seconds=expiracion)
-
-        archivos = ArchivosCertificacion(
+        return ArchivosCertificacion(
             url_presignada_pdf=url_pdf,
             url_presignada_imagen=url_foto,
             vigencia_segundos=expiracion,
             fecha_expiracion=fecha_exp_dt,
         )
 
-        metadatos = MetadatosConsultaPersona(
-            origen_datos=origen,
-            es_refrescado=False,
-            aviso=aviso,
-            fecha_ultima_consulta_segip=ultima_cert.created_at
-            if ultima_cert
-            else persona.updated_at,
-            total_certificaciones_registradas=total_certs,
-        )
-
-        datos_persona = DatosPersona(
+    @staticmethod
+    def _mapear_datos_persona(persona: PersonaModel) -> DatosPersona:
+        """Mapea la entidad ORM PersonaModel al esquema DatosPersona."""
+        return DatosPersona(
             numero_documento=persona.numero_documento,
             complemento=persona.complemento,
             nombres=persona.nombres,
@@ -342,24 +336,61 @@ class PersonaCertificadaService:
             fotografia_base64=None,
         )
 
-        datos_nacimiento = DatosNacimiento(
+    @staticmethod
+    def _mapear_datos_nacimiento(persona: PersonaModel) -> DatosNacimiento:
+        """Mapea la entidad ORM PersonaModel al esquema DatosNacimiento."""
+        return DatosNacimiento(
             pais=persona.pais_nacimiento,
             departamento=persona.departamento_nacimiento,
             provincia=persona.provincia_nacimiento,
             localidad=persona.localidad_nacimiento,
         )
 
-        datos_certificado = (
-            DatosCertificadoPdf(
-                numero_emision=ultima_cert.numero_emision,
-                codigo_segip=ultima_cert.codigo_segip,
-                fecha_emision=ultima_cert.fecha_emision,
-                motivo_consulta=ultima_cert.motivo_consulta,
-                paginas=ultima_cert.paginas,
-            )
-            if ultima_cert
-            else DatosCertificadoPdf()
+    @staticmethod
+    def _mapear_datos_certificado(ultima_cert: CertificacionModel | None) -> DatosCertificadoPdf:
+        """Mapea la entidad ORM CertificacionModel al esquema DatosCertificadoPdf."""
+        if not ultima_cert:
+            return DatosCertificadoPdf()
+        return DatosCertificadoPdf(
+            numero_emision=ultima_cert.numero_emision,
+            codigo_segip=ultima_cert.codigo_segip,
+            fecha_emision=ultima_cert.fecha_emision,
+            motivo_consulta=ultima_cert.motivo_consulta,
+            paginas=ultima_cert.paginas,
         )
+
+    async def _construir_respuesta_desde_db(
+        self,
+        persona: PersonaModel,
+        req: PersonaCertificadaRequest,
+        origen: str,
+        aviso: str | None,
+    ) -> PersonaCertificadaResponseData:
+        """Construye la respuesta consolidada a partir de los registros en PostgreSQL."""
+        ultima_cert: CertificacionModel | None = await self.persona_repo.get_ultima_certificacion(
+            persona.id
+        )
+        total_certs = await self.persona_repo.contar_certificaciones(persona.id)
+
+        archivos = self._generar_archivos_certificacion(
+            pdf_path=ultima_cert.pdf_path if ultima_cert else None,
+            foto_path=persona.fotografia_path,
+            req=req,
+        )
+
+        metadatos = MetadatosConsultaPersona(
+            origen_datos=origen,
+            es_refrescado=False,
+            aviso=aviso,
+            fecha_ultima_consulta_segip=ultima_cert.created_at
+            if ultima_cert
+            else persona.updated_at,
+            total_certificaciones_registradas=total_certs,
+        )
+
+        datos_persona = self._mapear_datos_persona(persona)
+        datos_nacimiento = self._mapear_datos_nacimiento(persona)
+        datos_certificado = self._mapear_datos_certificado(ultima_cert)
 
         # Registrar bitácora de consulta por caché
         await self.persona_repo.registrar_bitacora(

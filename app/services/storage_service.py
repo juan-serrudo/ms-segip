@@ -15,6 +15,42 @@ from app.core.exceptions import StorageException
 
 logger = logging.getLogger(__name__)
 
+_boto3_client_cache: dict[str, Any] = {}
+
+
+def _get_or_create_s3_client(
+    endpoint_url: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    use_ssl: bool,
+) -> Any:
+    """Retorna una instancia singleton cacheada de boto3.client para optimizar rendimiento."""
+    cache_key = f"{endpoint_url}|{access_key}|{region}|{use_ssl}"
+    if cache_key not in _boto3_client_cache:
+        boto_config = Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            connect_timeout=5,
+            read_timeout=15,
+            retries={"max_attempts": 3, "mode": "standard"},
+        )
+        _boto3_client_cache[cache_key] = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region,
+            use_ssl=use_ssl,
+            config=boto_config,
+        )
+    return _boto3_client_cache[cache_key]
+
+
+def clear_s3_client_cache() -> None:
+    """Limpia el caché de clientes Boto3 (útil para pruebas unitarias)."""
+    _boto3_client_cache.clear()
+
 
 class StorageService:
     """Gestiona la persistencia inmutable de archivos y generación de URLs prefirmadas en RustFS/S3."""
@@ -24,40 +60,27 @@ class StorageService:
         self.bucket_name = self.settings.RUSTFS_BUCKET_NAME
         self.default_expiry = self.settings.RUSTFS_DEFAULT_PRESIGNED_EXPIRY_SECONDS
 
-        # Configuración de cliente boto3 S3 optimizado para RustFS/MinIO (path-style addressing)
-        boto_config = Config(
-            signature_version="s3v4",
-            s3={"addressing_style": "path"},
-            connect_timeout=5,
-            read_timeout=15,
-            retries={"max_attempts": 3, "mode": "standard"},
-        )
-
-        self._s3_client: Any = boto3.client(
-            "s3",
+        # Reutilizar cliente singleton para operaciones internas (subidas, head, etc.)
+        self._s3_client: Any = _get_or_create_s3_client(
             endpoint_url=self.settings.RUSTFS_ENDPOINT_URL,
-            aws_access_key_id=self.settings.RUSTFS_ACCESS_KEY,
-            aws_secret_access_key=self.settings.RUSTFS_SECRET_KEY,
-            region_name=self.settings.RUSTFS_REGION,
+            access_key=self.settings.RUSTFS_ACCESS_KEY,
+            secret_key=self.settings.RUSTFS_SECRET_KEY,
+            region=self.settings.RUSTFS_REGION,
             use_ssl=self.settings.RUSTFS_USE_SSL,
-            config=boto_config,
         )
 
-        # Cliente para generación de URLs prefirmadas: firma el Host público exacto para evitar SignatureDoesNotMatch
+        # Cliente para generación de URLs prefirmadas: firma el Host público exacto
         public_url = self.settings.rustfs_public_url
         if public_url == self.settings.RUSTFS_ENDPOINT_URL:
             self._presigned_s3_client = self._s3_client
         else:
-            self._presigned_s3_client = boto3.client(
-                "s3",
+            self._presigned_s3_client = _get_or_create_s3_client(
                 endpoint_url=public_url,
-                aws_access_key_id=self.settings.RUSTFS_ACCESS_KEY,
-                aws_secret_access_key=self.settings.RUSTFS_SECRET_KEY,
-                region_name=self.settings.RUSTFS_REGION,
+                access_key=self.settings.RUSTFS_ACCESS_KEY,
+                secret_key=self.settings.RUSTFS_SECRET_KEY,
+                region=self.settings.RUSTFS_REGION,
                 use_ssl=self.settings.RUSTFS_USE_SSL,
-                config=boto_config,
             )
-
 
     def _asegurar_bucket_sync(self) -> bool:
         """Verifica la existencia del bucket y lo crea si no existe."""

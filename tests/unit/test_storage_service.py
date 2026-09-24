@@ -132,3 +132,14 @@ def test_generar_url_prefirmada_con_public_endpoint():
         ExpiresIn=600,
     )
 
+
+def test_storage_service_boto3_singleton_caching():
+    """Verifica que instancias sucesivas reutilicen el mismo cliente boto3 para idéntica configuración."""
+    settings = Settings(
+        RUSTFS_ENDPOINT_URL="http://localhost:9000",
+        RUSTFS_ACCESS_KEY="rustfsadmin",
+        RUSTFS_SECRET_KEY="rustfssecret2026",
+    )
+    s1 = StorageService(settings=settings)
+    s2 = StorageService(settings=settings)
+    assert s1._s3_client is s2._s3_client
