@@ -40,12 +40,14 @@ Los certificados de SEGIP contienen caracteres especiales del español boliviano
   ```python
   # Utilizar siempre la utilidad app.utils.text.remove_accents
   from app.utils.text import remove_accents
+
   clean_text = remove_accents(raw_text)  # Preserva Nuñez, no lo convierte en Nunez
   ```
 * **Búsqueda por Expresiones Regulares**:
   Usar expresiones regulares insensibles a mayúsculas/minúsculas y tolerantes a espacios múltiples entre etiquetas y valores:
   ```python
   import re
+
   patron_ci = re.compile(r"N(?:Ú|U)MERO\s+DE\s+DOCUMENTO\s*[:.-]?\s*([0-9]+)", re.IGNORECASE)
   ```
 
@@ -85,6 +87,7 @@ Nunca utilizar certificados reales de ciudadanos para pruebas automatizadas. Gen
 
 ```python
 import pymupdf
+
 
 def generar_pdf_prueba() -> bytes:
     doc = pymupdf.open()

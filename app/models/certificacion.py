@@ -26,7 +26,6 @@ class CertificacionModel(Base):
         BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
     )
     persona_id: Mapped[int] = mapped_column(
-
         BigInteger, ForeignKey("personas.id", ondelete="CASCADE"), nullable=False, index=True
     )
     numero_emision: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
@@ -43,9 +42,7 @@ class CertificacionModel(Base):
     # Auditoría
     usuario_consulta: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ip_origen: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relación inversa con Persona
     persona: Mapped["PersonaModel"] = relationship(back_populates="certificaciones")

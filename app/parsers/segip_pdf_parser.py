@@ -169,7 +169,9 @@ class SegipPdfParser:
         )
 
         # 9. Domicilio (soporta delimitadores angulares y domicilios en varias líneas)
-        dom_bracket = re.search(r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*<([^>]+)>", text, re.IGNORECASE)
+        dom_bracket = re.search(
+            r"(?:Domicilio|Direcci[oó]n)\s*[:.]?\s*<([^>]+)>", text, re.IGNORECASE
+        )
         if dom_bracket:
             domicilio = dom_bracket.group(1).strip()
         else:

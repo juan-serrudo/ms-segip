@@ -3,9 +3,10 @@
 import logging
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import PersonaDuplicadaException
 from app.models.bitacora import BitacoraConsultaModel
 from app.models.certificacion import CertificacionModel
 from app.models.persona import PersonaModel
@@ -47,6 +48,75 @@ class PersonaRepository:
         )
         result = await self.session.execute(stmt)
         return result.scalars().first()
+
+    async def buscar_con_desambiguacion(
+        self,
+        numero_documento: str,
+        complemento: str | None = None,
+        fecha_nacimiento: str | None = None,
+    ) -> PersonaModel | None:
+        """Busca una persona aplicando resolución de homónimos / duplicados por documento."""
+        doc = numero_documento.strip()
+        comp = (complemento or "").strip().upper()
+        fecha_nac = _parse_date(fecha_nacimiento) if fecha_nacimiento else None
+
+        if comp:
+            stmt = select(PersonaModel).where(
+                PersonaModel.numero_documento == doc,
+                PersonaModel.complemento == comp,
+            )
+            if fecha_nac is not None:
+                stmt = stmt.where(PersonaModel.fecha_nacimiento == fecha_nac)
+            result = await self.session.execute(stmt)
+            return result.scalars().first()
+
+        stmt_all = select(PersonaModel).where(PersonaModel.numero_documento == doc)
+        result_all = await self.session.execute(stmt_all)
+        personas = list(result_all.scalars().all())
+
+        if not personas:
+            return None
+
+        if len(personas) == 1:
+            return personas[0]
+
+        if fecha_nac is not None:
+            filtrados = [p for p in personas if p.fecha_nacimiento == fecha_nac]
+            if len(filtrados) == 1:
+                return filtrados[0]
+
+        complist = [f"'{p.complemento}'" if p.complemento else "''" for p in personas]
+        raise PersonaDuplicadaException(
+            message=(
+                f"Se encontraron múltiples registros ({len(personas)}) para la cédula {doc} "
+                f"con complementos [{', '.join(complist)}]. Debe proporcionar el complemento "
+                "o fecha de nacimiento para desambiguar."
+            ),
+            details={
+                "numero_documento": doc,
+                "total_coincidencias": len(personas),
+                "requiere_complemento": True,
+            },
+        )
+
+    async def get_ultima_certificacion(self, persona_id: int) -> CertificacionModel | None:
+        """Obtiene la certificación más reciente registrada para una persona."""
+        stmt = (
+            select(CertificacionModel)
+            .where(CertificacionModel.persona_id == persona_id)
+            .order_by(CertificacionModel.created_at.desc(), CertificacionModel.id.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def contar_certificaciones(self, persona_id: int) -> int:
+        """Retorna el conteo total de certificados emitidos para la persona."""
+        stmt = select(func.count(CertificacionModel.id)).where(
+            CertificacionModel.persona_id == persona_id
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
 
     async def upsert_persona(
         self,
@@ -193,9 +263,7 @@ class PersonaRepository:
         await self.session.flush()
         return bitacora
 
-    async def get_historial_certificaciones(
-        self, persona_id: int
-    ) -> list[CertificacionModel]:
+    async def get_historial_certificaciones(self, persona_id: int) -> list[CertificacionModel]:
         """Obtiene el listado cronológico de certificaciones registradas para una persona."""
         stmt = (
             select(CertificacionModel)

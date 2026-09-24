@@ -19,12 +19,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from app.main import app
 
+
 @pytest.mark.asyncio
 async def test_endpoint_exitoso():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health/live")
-        
+
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["status"] == "UP"
@@ -42,14 +43,15 @@ Todas las pruebas unitarias DEBEN correr sin acceso a la intranet de SEGIP. Util
 import pytest
 from app.schemas.segip import PersonaNormalizada
 
+
 @pytest.mark.asyncio
 async def test_consulta_persona_con_mock(mocker):
     # Mockear el método del cliente SOAP
     mock_soap = mocker.patch(
         "app.integrations.segip.client.SegipSoapClient.consulta_dato_persona_en_json",
-        return_value='{"CodigoRespuesta": 1, "NumeroDocumento": "4892341", "Nombres": "JUAN"}'
+        return_value='{"CodigoRespuesta": 1, "NumeroDocumento": "4892341", "Nombres": "JUAN"}',
     )
-    
+
     # Ejecutar la prueba
     # ...
     assert mock_soap.called
@@ -64,10 +66,11 @@ Para probar el parser de PDF sin utilizar documentos con datos personales reales
 ```python
 import pymupdf
 
+
 def crear_pdf_certificado_sintetico() -> bytes:
     doc = pymupdf.open()
     page = doc.new_page(width=595, height=842)
-    
+
     # Insertar texto estructurado
     page.insert_text(
         (50, 100),
@@ -76,15 +79,15 @@ def crear_pdf_certificado_sintetico() -> bytes:
         "NOMBRES: PEDRO\n"
         "PRIMER APELLIDO: PÉREZ\n"
         "SEGUNDO APELLIDO: GÓMEZ\n"
-        "FECHA DE NACIMIENTO: 10/08/1985\n"
+        "FECHA DE NACIMIENTO: 10/08/1985\n",
     )
-    
+
     # Insertar imagen simulada (rectángulo de color)
     pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 120, 160), 0)
     pix.set_rect(pix.irect, (100, 150, 200))
     img_bytes = pix.tobytes("jpeg")
     page.insert_image(pymupdf.Rect(400, 100, 520, 260), stream=img_bytes)
-    
+
     pdf_bytes = doc.tobytes()
     doc.close()
     return pdf_bytes

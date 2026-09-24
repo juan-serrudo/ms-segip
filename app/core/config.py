@@ -125,12 +125,18 @@ class Settings(BaseSettings):
     )
     DB_POOL_SIZE: int = Field(default=5, description="Tamaño base del pool de conexiones")
     DB_MAX_OVERFLOW: int = Field(default=5, description="Conexiones adicionales máximas en ráfaga")
-    DB_POOL_TIMEOUT: float = Field(default=30.0, description="Timeout en segundos para obtener conexión")
-    DB_POOL_RECYCLE: int = Field(default=1800, description="Tiempo de reciclado de conexiones en segundos")
+    DB_POOL_TIMEOUT: float = Field(
+        default=30.0, description="Timeout en segundos para obtener conexión"
+    )
+    DB_POOL_RECYCLE: int = Field(
+        default=1800, description="Tiempo de reciclado de conexiones en segundos"
+    )
     DB_POOL_PRE_PING: bool = Field(
         default=True, description="Verifica la conexión antes de entregarla del pool (vital en K8s)"
     )
-    DB_ECHO: bool = Field(default=False, description="Activa log detallado de SQL emitido por SQLAlchemy")
+    DB_ECHO: bool = Field(
+        default=False, description="Activa log detallado de SQL emitido por SQLAlchemy"
+    )
 
     # Almacenamiento de Objetos (RustFS / S3)
     RUSTFS_ENDPOINT_URL: str = Field(
@@ -139,12 +145,29 @@ class Settings(BaseSettings):
     RUSTFS_PORT: int = Field(default=9000, description="Puerto API S3 de RustFS")
     RUSTFS_CONSOLE_PORT: int = Field(default=9001, description="Puerto Consola Web de RustFS")
     RUSTFS_ACCESS_KEY: str = Field(default="rustfsadmin", description="Access Key para RustFS/S3")
-    RUSTFS_SECRET_KEY: str = Field(default="rustfssecret2026", description="Secret Key para RustFS/S3")
+    RUSTFS_SECRET_KEY: str = Field(
+        default="rustfssecret2026", description="Secret Key para RustFS/S3"
+    )
     RUSTFS_BUCKET_NAME: str = Field(
         default="segip-archivos", description="Nombre del bucket en RustFS"
     )
     RUSTFS_REGION: str = Field(default="us-east-1", description="Región S3")
-    RUSTFS_USE_SSL: bool = Field(default=False, description="Indica si debe usarse HTTPS para RustFS")
+    RUSTFS_USE_SSL: bool = Field(
+        default=False, description="Indica si debe usarse HTTPS para RustFS"
+    )
+    RUSTFS_PUBLIC_ENDPOINT_URL: str | None = Field(
+        default=None,
+        description="URL pública/externa de RustFS para generación de URLs prefirmadas",
+    )
+    RUSTFS_DEFAULT_PRESIGNED_EXPIRY_SECONDS: int = Field(
+        default=300,
+        description="Tiempo de vigencia por defecto para URLs prefirmadas en segundos (5 minutos)",
+    )
+
+    @property
+    def rustfs_public_url(self) -> str:
+        """Retorna la URL pública efectiva para URLs prefirmadas."""
+        return (self.RUSTFS_PUBLIC_ENDPOINT_URL or self.RUSTFS_ENDPOINT_URL).rstrip("/")
 
     @property
     def async_database_url(self) -> str:
@@ -158,7 +181,6 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
-
 
     @property
     def pdf_max_size_bytes(self) -> int:

@@ -236,3 +236,51 @@ class UnauthorizedException(AppException):
             error_code="UNAUTHORIZED",
             details=details,
         )
+
+
+class StorageException(AppException):
+    """Error en las operaciones de almacenamiento de objetos (RustFS / S3)."""
+
+    def __init__(
+        self,
+        message: str = "Error en el servicio de almacenamiento de objetos",
+        details: Any = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=500,
+            error_code="STORAGE_ERROR",
+            details=details,
+        )
+
+
+class PersonaDuplicadaException(AppException):
+    """Existen múltiples registros (homónimos) para el documento y se requiere complemento o fecha de nacimiento."""
+
+    def __init__(
+        self,
+        message: str = "Se encontraron múltiples registros con el documento indicado. Especifique complemento o fecha de nacimiento",
+        details: Any = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=409,
+            error_code="PERSONA_DUPLICADA_HOMONIMIA",
+            details=details,
+        )
+
+
+class SegipQuotaExceededException(AppException):
+    """Se ha alcanzado o sobrepasado la cuota diaria de consultas asignada por SEGIP."""
+
+    def __init__(
+        self,
+        message: str = "Se ha superado la cuota diaria asignada por SEGIP para consultas externas",
+        details: Any = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=429,
+            error_code="SEGIP_QUOTA_EXCEEDED",
+            details=details,
+        )

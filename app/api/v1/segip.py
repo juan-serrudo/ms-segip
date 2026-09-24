@@ -2,9 +2,13 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_segip_service
+from app.api.dependencies import get_persona_certificada_service, get_segip_service
 from app.core.security import get_auth_dependency
 from app.schemas.common import ApiResponse
+from app.schemas.persona_certificada import (
+    PersonaCertificadaRequest,
+    PersonaCertificadaResponseData,
+)
 from app.schemas.segip import (
     CertificacionConsultaRequest,
     CertificacionQrRequest,
@@ -16,6 +20,7 @@ from app.schemas.segip import (
     QrVerificacionResponseData,
     VersionResponseData,
 )
+from app.services.persona_certificada_service import PersonaCertificadaService
 from app.services.segip_service import SegipService
 
 router = APIRouter(
@@ -83,6 +88,31 @@ async def solicitar_certificacion(
     return ApiResponse[CertificacionResponseData](
         success=True,
         message="Certificación obtenida exitosamente",
+        data=data,
+    )
+
+
+@router.post(
+    "/certificaciones/consultar-persona",
+    summary="Consultar Persona y Certificación Oficial (Caché Permanente + RustFS)",
+    description=(
+        "Consulta integral de persona y certificación SEGIP: recupera desde la base de datos local "
+        "(para evitar sobrepasar la cuota diaria del servicio) o consulta al servicio SOAP oficial, "
+        "almacenando de forma inmutable el PDF y fotografía en RustFS y entregando URLs prefirmadas."
+    ),
+    response_model=ApiResponse[PersonaCertificadaResponseData],
+)
+async def consultar_persona_certificada(
+    request: PersonaCertificadaRequest,
+    persona_certificada_service: PersonaCertificadaService = Depends(
+        get_persona_certificada_service
+    ),
+) -> ApiResponse[PersonaCertificadaResponseData]:
+    """Consulta o certifica los datos de una persona con almacenamiento inmutable en RustFS."""
+    data = await persona_certificada_service.consultar_o_certificar_persona(request)
+    return ApiResponse[PersonaCertificadaResponseData](
+        success=True,
+        message="Consulta de persona y certificación procesada exitosamente",
         data=data,
     )
 

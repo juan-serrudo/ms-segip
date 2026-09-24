@@ -10,7 +10,9 @@ from app.core.database import get_session_factory
 from app.integrations.segip.client import SegipSoapClient
 from app.repositories.persona_repository import PersonaRepository
 from app.services.pdf_service import PdfService
+from app.services.persona_certificada_service import PersonaCertificadaService
 from app.services.segip_service import SegipService
+from app.services.storage_service import StorageService
 
 
 async def get_segip_client(
@@ -59,3 +61,24 @@ def get_persona_repository(
     """Provee una instancia de PersonaRepository ligada a la sesión activa."""
     return PersonaRepository(session=session)
 
+
+def get_storage_service(
+    settings: Settings = Depends(get_settings),
+) -> StorageService:
+    """Provee una instancia del servicio de almacenamiento RustFS / S3."""
+    return StorageService(settings=settings)
+
+
+def get_persona_certificada_service(
+    persona_repo: PersonaRepository = Depends(get_persona_repository),
+    segip_service: SegipService = Depends(get_segip_service),
+    storage_service: StorageService = Depends(get_storage_service),
+    settings: Settings = Depends(get_settings),
+) -> PersonaCertificadaService:
+    """Provee el servicio orquestador para consulta y certificación de personas."""
+    return PersonaCertificadaService(
+        persona_repo=persona_repo,
+        segip_service=segip_service,
+        storage_service=storage_service,
+        settings=settings,
+    )

@@ -18,11 +18,14 @@ Todos los modelos de solicitud (*Request*) y datos de respuesta (*Response Data*
 from pydantic import Field
 from app.schemas.common import UoitBaseModel
 
+
 class NuevaSolicitudRequest(UoitBaseModel):
     # En Python se usa snake_case; hacia afuera se serializa automáticamente en camelCase
     numero_documento: str = Field(..., description="Cédula de identidad", min_length=4)
     primer_apellido: str = Field(..., description="Primer apellido del titular")
-    extraer_fotografia: bool = Field(default=False, description="Indica si debe extraerse la fotografía")
+    extraer_fotografia: bool = Field(
+        default=False, description="Indica si debe extraerse la fotografía"
+    )
 ```
 
 ### Reglas Clave:
@@ -43,6 +46,7 @@ from app.services.segip_service import SegipService
 
 router = APIRouter(prefix="/recurso", tags=["Recursos"])
 
+
 @router.post(
     "",
     response_model=ApiResponse[MiModeloRespuestaData],
@@ -55,7 +59,7 @@ async def operacion_endpoint(
 ) -> ApiResponse[MiModeloRespuestaData]:
     # Delegar la lógica al servicio de aplicación
     resultado = await service.ejecutar_operacion(request)
-    
+
     return ApiResponse[MiModeloRespuestaData](
         success=True,
         message="Operación ejecutada exitosamente",

@@ -50,7 +50,6 @@ class TraceabilityMiddleware(BaseHTTPMiddleware):
 
 
 @asynccontextmanager
-
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de la aplicación: configuración de logs estructurados y recursos."""
     setup_logging(
@@ -66,10 +65,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         settings.ENVIRONMENT,
         settings.LOG_FORMAT,
     )
+    # Inicializar bucket de almacenamiento en RustFS
+    try:
+        from app.services.storage_service import StorageService
+
+        storage = StorageService(settings=settings)
+        await storage.asegurar_bucket_existe()
+    except Exception as err:
+        logger.warning(
+            "No se pudo verificar o crear el bucket en RustFS durante el arranque: %s", err
+        )
+
     yield
     logger.info("Deteniendo %s...", settings.APP_NAME)
     await close_database_engine()
-
 
 
 app = FastAPI(

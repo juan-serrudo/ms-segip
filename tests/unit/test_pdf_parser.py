@@ -98,7 +98,10 @@ def test_parse_segip_pdf_validation_report():
     assert result.nacimiento.localidad == "SUCRE"
 
     assert result.certificado.codigo_segip == "c4CAXTej-4774047"
-    assert result.certificado.motivo_consulta == "CONVENIO - FISCALIA GENERAL DEL ESTADO MINISTERIO PUBLICO"
+    assert (
+        result.certificado.motivo_consulta
+        == "CONVENIO - FISCALIA GENERAL DEL ESTADO MINISTERIO PUBLICO"
+    )
 
 
 def test_parse_segip_pdf_convenio_brackets():
